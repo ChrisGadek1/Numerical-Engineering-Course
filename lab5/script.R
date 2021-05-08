@@ -1,0 +1,145 @@
+# Zadanie 1
+
+#install.packages('tidyverse')
+#library(tidyverse)
+#library(dbplyr)
+setwd("C:/studia/semestr 4/mownit/lab5")
+results1 <- read_csv("raportAcceleration.csv")
+results2 <- read_csv("dataframe1.csv")
+
+df <- merge(results1, results2, by = 0, all = TRUE,sort = FALSE)[-1]
+df <- df %>% drop_na()
+df <- select(df, -5)
+
+# Zadanie 2
+
+df <- df %>%
+  group_by(wielkosc.x) %>%
+  summarise(
+    mnożenie_naiwne_mean = mean(mnożenie_naiwne),
+    mnożenie_ulepszone_mean = mean(mnożenie_ulepszone),
+    mnożenie_BLAS_mean = mean(mnożenie_BLAS),
+    iloczyn_skalarny_mean = mean(iloczyn_skalarny),
+    mnozenie_macierzy_mean = mean(mnozenie_macierzy),
+    mnożenie_naiwne_sd = sd(mnożenie_naiwne),
+    mnożenie_ulepszone_sd = sd(mnożenie_ulepszone),
+    mnożenie_BLAS_sd = sd(mnożenie_BLAS),
+    iloczyn_skalarny_sd = sd(iloczyn_skalarny),
+    mnozenie_macierzy_sd = sd(mnozenie_macierzy)
+  ) %>%
+  filter(!row_number() %in% 101) %>%
+  filter(!row_number() %in% 138)
+
+df <- rename(df, x=`wielkosc.x`)
+
+avg_df <- tibble(df[1:6])
+sd_df <- tibble(df[1], df[7:11])
+
+avg_df <- avg_df %>%
+  gather("nazwa", "czas[s]", 2:6)
+
+sd_df <- sd_df %>%
+  gather("nazwa", "czas_sd", 2:6)
+
+final_df <- tibble(avg_df[1], avg_df[2], avg_df[3], sd_df[3])
+
+library(ggplot2)
+
+ggplot(final_df, aes(x=x, y=`czas[s]` ,color=nazwa)) + geom_point() +
+  labs(y="czas[s]", x="wielkość macierzy/wektora", title = "porównanie czasów mnożenia wektorów/macierzy")
+
+# Zadanie 3
+
+last_plot() + geom_errorbar(aes(ymin = `czas[s]`-czas_sd, ymax = `czas[s]`+czas_sd))
+
+# Zadanie 4
+
+fit_mnożenie_naiwne <- lm(`mnożenie_naiwne_mean` ~ poly(x, 3, raw=TRUE), data=df)
+fit_mnożenie_ulepszone <- lm(`mnożenie_ulepszone_mean` ~ poly(x,3,raw=TRUE), data=df)
+fit_mnożenie_BLAS <- lm(`mnożenie_BLAS_mean` ~ poly(x,3,raw=TRUE), data=df)
+fit_iloczyn_skalarny <- lm(`iloczyn_skalarny_mean` ~ poly(x, 2, raw=TRUE), data=df)
+fit_mnozenie_macierzy <- lm(`mnozenie_macierzy_mean` ~ poly(x,3,raw=TRUE), data=df)
+
+newdata = data.frame(x = seq(1, 200, length.out=200))
+newdata$y_mnożenie_naiwne = predict(fit_mnożenie_naiwne, newdata)
+newdata$y_mnożenie_ulepszone = predict(fit_mnożenie_ulepszone, newdata)
+newdata$y_mnożenie_BLAS = predict(fit_mnożenie_BLAS, newdata)
+newdata$y_iloczyn_skalarny = predict(fit_iloczyn_skalarny, newdata)
+newdata$y_mnozenie_macierzy = predict(fit_mnozenie_macierzy, newdata)
+
+last_plot() + geom_line(data=newdata, aes(x, y_mnożenie_naiwne, color="fit mnożenie_naiwne"), size=1.2) + 
+  geom_line(data=newdata, aes(x, y_mnożenie_ulepszone, color="fit mnożenie_ulepszone"), size=1.2) +
+  geom_line(data=newdata, aes(x, y_mnożenie_BLAS, color="fit mnożenie_BLAS"), size=1.2) + 
+  geom_line(data=newdata, aes(x, y_iloczyn_skalarny, color="fit iloczyn_skalarny"), size=1.2) + 
+  geom_line(data=newdata, aes(x, y_mnozenie_macierzy, color="fit mnożenie_macierzy"), size=1.2)
+
+# Zadanie 5
+
+covid_data <- read_csv("owid-covid-data.csv")
+
+covid_data_poland <- covid_data %>%
+  filter(location == "Poland") %>%
+  select(date, new_cases)
+
+avg_7_day <- c()
+
+for(i in 1:length(covid_data_poland$new_cases)){
+  if(i > 7){
+    sum = 0
+    for(j in (i-6):i){
+      sum = sum + covid_data_poland$new_cases[j]
+    }
+    sum = sum / 6
+    avg_7_day <- append(avg_7_day, sum)
+  }
+  else{
+    avg_7_day <- append(avg_7_day, NA)
+  }
+}
+
+covid_data_poland <- covid_data_poland %>%
+  add_column(avg_7_day) 
+
+
+test_november <- covid_data_poland %>%
+  filter(row_number() > 202) %>%
+  filter(row_number() < 50) %>%
+  select(new_cases) %>%
+  add_column(1:49) %>%
+  rename(y = `new_cases`, x=`1:49`)
+
+mod <- nls(y ~ SSlogis(x, Asym, xmid, scal), data=test_november)
+
+test_march <- covid_data_poland %>%
+  filter(row_number() > 349) %>%
+  filter(row_number() < 50) %>%
+  select(new_cases) %>%
+  add_column(1:49) %>%
+  rename(y = `new_cases`, x=`1:49`)
+
+mod_march <- nls(y ~ SSlogis(x, Asym, xmid, scal), data=test_march)
+
+newdata_march = data.frame(x = seq(1,50,length.out = 50))
+newdata_march$y = predict(mod_march, newdata_march)
+
+newdata = data.frame(x = seq(1, 50, length.out=50))
+newdata$y = predict(mod, newdata)
+
+predicted_1 <- c(rep(NA, each=202))
+predicted_1 <- append(predicted_1,newdata$y)
+predicted_1 <- append(predicted_1, rep(NA, each=150))
+
+predicted_2 <- c(rep(NA, each=349))
+predicted_2 <- append(predicted_2, newdata_march$y)
+predicted_2 <- append(predicted_2, rep(NA, each=3))
+
+covid_data_poland <- covid_data_poland %>%
+  add_column(predicted_1) %>%
+  add_column(predicted_2)
+
+ggplot(covid_data_poland) + geom_point(aes(x=date, y=new_cases, color="nowe przypadki"), size=1.2) + 
+  geom_line(aes(x=date, y=avg_7_day,color="srednia 7-dniowa"), size=1.2) + 
+  geom_line(aes(x=date, y=predicted_1, color="dopasowana krzywa listopadowa"), size=1.2) + 
+  geom_line(aes(x=date, y=predicted_2, color="dopasowana krzywa marcowa"), size=1.2)
+  labs(y="ilość", x="data",title = "ilość nowych przypadków COVID-19 w Polsce") 
+
